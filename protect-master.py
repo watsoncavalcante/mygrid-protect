@@ -1,5 +1,4 @@
-global breakerList = []
-global iedList = []
+import time
 
 class CT(object):
 	'''
@@ -15,6 +14,7 @@ class CT(object):
 		self.Ipn = Ipn							# Corrente nominal do primario do TC
 		self.Isn = Isn							# Corrente nominal do secundario do TC
 		self.rtc = float(Ipn/Isn)				# Relacao de transformacao do TC
+		self.current = 0 	 					# Leitura atual de corrente do primario TC
 		self.accuracyClass = accuracyClass		# Classe de exatidao do TC (valores tipicos para TC 
 												# de protecao: 2.5/5.0/10.0)
 
@@ -36,7 +36,9 @@ class CT(object):
 			return float(self.Isat)/self.rtc
 		else:
 			return float(Ip)/self.rtc
-			
+
+	def setPrimaryCurrent(self,Ip):
+		self.current=Ip
 	
 	def setSaturation(self,saturation=True):
 		'''
@@ -60,14 +62,14 @@ class IED(object):
 				name,
 				nmax,
 				functions,
-				activeGroup=None,
 				ct=None,
+				activeGroup=None,
 				limits=None):
 
 		# parametros do IED, passados na criacao do objeto
 
 		self.name = name
-		self.functions = functions 				# dicionario com as funcoes habilitadas no ied
+		self.functions = functions 				# dicionario com as funcoes habilitadas no ied **>implementar logica
 		self.nmax = nmax						# numero maximo de grupos de ajustes
 		
 		# Laco que associa os TCs de fase e neutro ao IED
@@ -85,6 +87,8 @@ class IED(object):
 		self.function_sens = None 				# flag que indica a funcao de protecao indicada no 
 												# painel do ied
 		self.current = float()					# inicializa a corrente do ied como zero
+
+		self.trip = False
 
 		if limits is not None:					# limites permitidos pelo rele
 
@@ -106,8 +110,26 @@ class IED(object):
 			tag = str(i+1)
 			self.groups[tag] = None
 
-	def setTrip(self):
-		self.trip = True
+	def sendTrip(self):
+		currents = []
+		for t in self.ct:
+			## currents.append(t.offSetCurrent(t.current))
+			currents.append(t.current)
+	
+		if self.activeGroup.tripF50(max(currents)):
+			self.function_sens = '50'
+			self.trip = True
+		elif self.activeGroup.tripF50N(currents[3]):
+			self.function_sens = '50N'
+			self.trip = True
+		elif max(currents)>self.activeGroup.ipk51:
+			#time.sleep(self.activeGroup.delayF51(max(currents)))
+			self.function_sens = '51'
+			self.trip = True
+		elif currents[3]>self.activeGroup.ipk51N:
+			#time.sleep(self.activeGroup.delayF51N(currents[3]))
+			self.function_sens = '51N'
+			self.trip = True
 
 	def reset(self):
 		self.trip = False
@@ -120,18 +142,18 @@ class Breaker(object):
 	'''
 	def __init__(self,
 				name,
-				opState='NC',
+				opStatus='NC',
 				relay=None):
 		
 		self.name = name 						# Nome do disjuntor
 		self.relay = relay						# Associacao do rele ao disjuntor
 		if opState is 'NO':						# Define o estado inicial do disjuntor pelo seu estado 
-			self.state = 'open' 				# normal de operacao: open quando 'NO'(normalmente aberto) 
+			self.status = 'open' 				# normal de operacao: open quando 'NO'(normalmente aberto) 
 		else:									# 					  closed nos demais casos.
-			self.state = 'closed'				# Por padrao, opState recebe 'NC'
+			self.status = 'closed'				# Por padrao, opState recebe 'NC'
 	
 	def isOpen(self):
-		if self.state = 'open':
+		if self.status == 'open':
 			return True
 		else:
 			return False
@@ -149,7 +171,7 @@ class AdjustGroup(object):
 		as correntes de pickup das funcoes 50/51 e 50/51N, os tipos de
 		curva e os valores de dial.
 	'''
-	def __init__(self,ipk51,ipk50,curvaP,dialP,ipk51N,ipk50N,curveN,dialN):
+	def __init__(self,ipk50,ipk51,curveP,dialP,ipk50N,ipk51N,curveN,dialN):
 		
 		# ajustes de fase
 
@@ -176,12 +198,12 @@ class AdjustGroup(object):
 				'EI': Extremamente Inversa
 		'''
 
-		if curve == 'NI' | curve == 'SI':
+		if curve == 'NI' or curve == 'SI':
 
 			beta = 0.14
 			alpha = 0.02
 
-		elif curve == 'MI' | curve == 'VI':
+		elif curve == 'MI' or curve == 'VI':
 
 			beta = 13.5
 			alpha = 1.0
@@ -199,9 +221,9 @@ class AdjustGroup(object):
 		else:
 			return True
 
-	def timeF51(self,Iphase):
+	def delayF51(self,Iphase):
 			a,b = self.returnParameters(self.curveP)
-			return self.dialP*b/(((Iphase/self.ipk50)**a)-1)	
+			return self.dialP*b/(((Iphase/self.ipk51)**a)-1)	
 
 	def tripF50N(self,Ineutral):
 		if self.ipk50N > Ineutral:
@@ -209,12 +231,27 @@ class AdjustGroup(object):
 		else:
 			return True
 
-	def timeF51N(self,Ineutral):
+	def delayF51N(self,Ineutral):
 		a,b = self.returnParameters(self.curveP)
-			return self.dialP*b/(((Iphase/self.ipk50)**a)-1)
+		return self.dialP*b/(((Ineutral/self.ipk51N)**a)-1)
+
+class PowerGrid(object):
+	'''
+		Classe que modela uma rede eletrica.
+	'''
+	def __init__(self):
+		# Inserir rede com os valores de curto circuito atraves
+		# do parametro shortCircuitSimulatedGrid
+		pass
+
+	def setProtection(self):
+		
+		pass
 
 
 
+
+	
 # Rotinas de teste
 
 ##tcs = [CT("TCA",500,5),CT("TCB",500,5),CT("TCC",500,5),CT("TCN",50,5)]
@@ -244,3 +281,24 @@ class AdjustGroup(object):
 #	print "Ip=" + str(ipList[i-j]) + "A, Is=" + str(isList[i-j]) +"A"
 
 
+# import matplotlib.pyplot as plt
+# plt.plot( [10,5,3,4,6,8] )
+# plt.title("Muito Facil")
+# plt.show()
+
+
+
+Ipn=100
+tcs = [CT("TCA",10*Ipn,5),CT("TCB",10*Ipn,5),CT("TCC",10*Ipn,5),CT("TCN",Ipn,5)]
+adjust = AdjustGroup(9*Ipn,1.4*Ipn,'VI',0.1,0.9*Ipn,0.14*Ipn,'EI',1)
+ied = IED("IED1",1,dict(),tcs,adjust)
+
+print "teste 50/51 e 50/51N"
+for t in tcs:
+	t.setPrimaryCurrent(1)
+for i in range(0,200):
+	tcs[0].setPrimaryCurrent(i*10)
+	tcs[3].setPrimaryCurrent(i*1.11)
+	ied.sendTrip()
+	print "Ip:"+str(tcs[0].current)+"A ;In:"+str(tcs[3].current)+"A ; F.Sens:"+str(ied.function_sens)
+	ied.reset()
