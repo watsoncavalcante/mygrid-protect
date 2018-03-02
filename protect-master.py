@@ -48,7 +48,7 @@ class CT(object):
 		'''
 
 		if saturation:
-			print self.name+" saturou. Prever manutencao."
+			print (self.name+" saturou. Prever manutencao.")
 			self.isSaturated = True				# Em caso de saturacao, eh exibido um alerta de manutencao
 		else:									# do TC. Eh necessario setar o parametro isSaturated = False
 			self.isSaturated = False			# para que o TC tenha sua funcionalidade reestabelecida
@@ -61,7 +61,7 @@ class IED(object):
 	def __init__(self, 						
 				name,
 				nmax,
-				functions,
+				functions=None,
 				ct=None,
 				activeGroup=None,
 				limits=None):
@@ -122,11 +122,11 @@ class IED(object):
 		elif self.activeGroup.tripF50N(currents[3]):
 			self.function_sens = '50N'
 			self.trip = True
-		elif max(currents)>self.activeGroup.ipk51:
+		elif self.activeGroup.tripF51(max(currents)):
 			#time.sleep(self.activeGroup.delayF51(max(currents)))
 			self.function_sens = '51'
 			self.trip = True
-		elif currents[3]>self.activeGroup.ipk51N:
+		elif self.activeGroup.tripF51N(currents[3]):
 			#time.sleep(self.activeGroup.delayF51N(currents[3]))
 			self.function_sens = '51N'
 			self.trip = True
@@ -221,6 +221,13 @@ class AdjustGroup(object):
 		else:
 			return True
 
+	def tripF51(self,Iphase):
+		if self.ipk51 < Iphase:
+			#time.sleep(self.delayF51(Iphase))						#desabilitado para teste
+			return True
+		else:
+			return False	
+
 	def delayF51(self,Iphase):
 			a,b = self.returnParameters(self.curveP)
 			return self.dialP*b/(((Iphase/self.ipk51)**a)-1)	
@@ -231,6 +238,13 @@ class AdjustGroup(object):
 		else:
 			return True
 
+	def tripF51N(self,Ineutral):
+		if self.ipk51N < Ineutral:
+			#time.sleep(self.delayF51N(Ineutral))					#desabilitado para teste
+			return True
+		else:
+			return False
+
 	def delayF51N(self,Ineutral):
 		a,b = self.returnParameters(self.curveP)
 		return self.dialP*b/(((Ineutral/self.ipk51N)**a)-1)
@@ -239,66 +253,125 @@ class PowerGrid(object):
 	'''
 		Classe que modela uma rede eletrica.
 	'''
-	def __init__(self):
+	def __init__(self,ieds):
 		# Inserir rede com os valores de curto circuito atraves
 		# do parametro shortCircuitSimulatedGrid
+
+		self.ieds = ieds
 		pass
 
 	def setProtection(self):
-		
 		pass
+
+	def plotCurves(self,iscmax=1000,ieds=None):
+
+		import matplotlib.pyplot as plt
+		import numpy as np
+
+		cor = ['b', 'r', 'g', 'k', 'y','m','c']
+
+		if ieds == None:
+			ieds = self.ieds
+
+		
+		isclist = []
+		for i in ieds:
+			isclist.append(i.activeGroup.ipk50N)
+	
+		iscmin = int(min(isclist))
+		iscmax = int(iscmax)
+
+		isc = range(iscmin,iscmax)
+		opTime5051 = []
+		opTime5051N = []
+		isc = []
+		iscN = []
+		j=0
+
+		for ied in ieds:
+
+			isc.append(range(int(ied.activeGroup.ipk50*1.05),int(ied.activeGroup.ipk51*1.05)))
+			opTime5051.append([])
+			for i in isc[j]:
+				if ied.activeGroup.ipk50 < i:
+					opTime5051[j].append(j*0.3)
+				elif ied.activeGroup.ipk51 < i:
+					opTime5051[j].append(ieds[0].activeGroup.delayF51(i))
+
+			iscN.append(range(int(ied.activeGroup.ipk50N*1.05),int(ied.activeGroup.ipk51N*1.05)))
+			opTime5051N.append([])
+			for i in iscN[j]:
+				if ied.activeGroup.ipk50N < i:
+					opTime5051N[j].append(j*0.3)
+				elif ied.activeGroup.ipk51N < i:
+					opTime5051N[j].append(ieds[0].activeGroup.delayF51(i))
+
+			#plt.plot(isc[j],opTime5051[j])
+			j+=1
+		
+		i=[0,1,2,3,4,5]
+		j=[0,1,2,3,4,5]
+		for k in range(0,3):
+			j[]
+			plt.plot(i,j)
+
+		#plt.plot(isc[0],opTime5051[0])
+		plt.show()
 
 
 
 
 	
 # Rotinas de teste
+'''
+tcs = [CT("TCA",500,5),CT("TCB",500,5),CT("TCC",500,5),CT("TCN",50,5)]
+ied = IED("IED1",3,dict(),tcs)
 
-##tcs = [CT("TCA",500,5),CT("TCB",500,5),CT("TCC",500,5),CT("TCN",50,5)]
-#ied = IED("IED1",3,dict(),tcs)
+print "Nome do IED: " + ied.name
+print "Nome do TC: " + ied.ct[1].name
+print "Corrente nominais do TC: " + str(tcs[1].Ipn)
+print "Corrente de saturacao do TC: " + str(tcs[1].Isat)
 
-#print "Nome do IED: " + ied.name
-#print "Nome do TC: " + ied.ct[1].name
-#print "Corrente nominais do TC: " + str(tcs[1].Ipn)
-#print "Corrente de saturacao do TC: " + str(tcs[1].Isat)
+tc2 = CT("TC2",500,1,2.5,5000)
+tcs[2] = tc2 
+print "Nome do TC: " + ied.ct[2].name
+print "Corrente nominais do TC: " + str(tcs[2].Ipn)
+print "Corrente de saturacao do TC: " + str(tcs[2].Isat)
 
-#tc2 = CT("TC2",500,1,2.5,5000)
-#tcs[2] = tc2 
-#print "Nome do TC: " + ied.ct[2].name
-#print "Corrente nominais do TC: " + str(tcs[2].Ipn)
-#print "Corrente de saturacao do TC: " + str(tcs[2].Isat)
+j=4990
+ipList = range(j,5010)
+isList = []
 
-#j=4990
-#ipList = range(j,5010)
-#isList = []
+for i in ipList:
+	isList.append(tc2.offSetCurrent(ipList[i-j]))
+	print "Ip=" + str(ipList[i-j]) + "A, Is=" + str(isList[i-j]) +"A"
 
-#for i in ipList:
-#	isList.append(tc2.offSetCurrent(ipList[i-j]))
-#	print "Ip=" + str(ipList[i-j]) + "A, Is=" + str(isList[i-j]) +"A"
+for i in ipList:
+	isList[i-j]=tc2.offSetCurrent(ipList[i-j])
+	print "Ip=" + str(ipList[i-j]) + "A, Is=" + str(isList[i-j]) +"A"
+'''
 
-#for i in ipList:
-#	isList[i-j]=tc2.offSetCurrent(ipList[i-j])
-#	print "Ip=" + str(ipList[i-j]) + "A, Is=" + str(isList[i-j]) +"A"
-
-
-# import matplotlib.pyplot as plt
-# plt.plot( [10,5,3,4,6,8] )
-# plt.title("Muito Facil")
-# plt.show()
-
-
-
-Ipn=100
+Ipn=10000
 tcs = [CT("TCA",10*Ipn,5),CT("TCB",10*Ipn,5),CT("TCC",10*Ipn,5),CT("TCN",Ipn,5)]
-adjust = AdjustGroup(9*Ipn,1.4*Ipn,'VI',0.1,0.9*Ipn,0.14*Ipn,'EI',1)
+adjust = AdjustGroup(9*Ipn,1.4*Ipn,'NI',0.1,0.9*Ipn,0.14*Ipn,'NI',1)
+ied1 = IED("IED1",1,dict(),tcs,adjust)
+
+Ipn=15000
+tcs = [CT("TCA",10*Ipn,5),CT("TCB",10*Ipn,5),CT("TCC",10*Ipn,5),CT("TCN",Ipn,5)]
+adjust = AdjustGroup(9*Ipn,1.4*Ipn,'NI',0.1,0.9*Ipn,0.14*Ipn,'NI',1)
 ied = IED("IED1",1,dict(),tcs,adjust)
 
-print "teste 50/51 e 50/51N"
+Rede = PowerGrid([ied1,ied])
+Rede.plotCurves(30000)
+
+'''
+print ("teste 50/51 e 50/51N")
 for t in tcs:
 	t.setPrimaryCurrent(1)
 for i in range(0,200):
 	tcs[0].setPrimaryCurrent(i*10)
 	tcs[3].setPrimaryCurrent(i*1.11)
 	ied.sendTrip()
-	print "Ip:"+str(tcs[0].current)+"A ;In:"+str(tcs[3].current)+"A ; F.Sens:"+str(ied.function_sens)
+	print ("Ip:"+str(tcs[0].current)+"A ;In:"+str(tcs[3].current)+"A ; F.Sens:"+str(ied.function_sens))
 	ied.reset()
+'''
